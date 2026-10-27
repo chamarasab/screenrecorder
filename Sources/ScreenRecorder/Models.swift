@@ -94,6 +94,10 @@ public struct RecordingItem: Identifiable, Equatable, Hashable {
         return formatter.string(fromByteCount: fileSizeBytes)
     }
 
+    public var formattedSize: String {
+        return formattedFileSize
+    }
+
     public var formattedDate: String {
         let formatter = DateFormatter()
         formatter.dateStyle = .medium

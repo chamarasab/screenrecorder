@@ -52,6 +52,8 @@ cat <<EOF > "$CONTENTS_DIR/Info.plist"
     <string>ScreenRecorder requires screen recording permission to capture your display video and internal macOS system audio.</string>
     <key>NSMicrophoneUsageDescription</key>
     <string>ScreenRecorder requires microphone permission if voiceover recording is enabled.</string>
+    <key>NSCameraUsageDescription</key>
+    <string>ScreenRecorder requires camera access to display your floating webcam preview overlay while recording.</string>
 </dict>
 </plist>
 EOF

@@ -174,6 +174,28 @@ else
     fail "App Launch" "ScreenRecorder process not found after launch"
 fi
 
+# TEST 6: Camera Device Discovery & AVFoundation Capture
+echo -e "\n${YELLOW}6. Camera Device Discovery & AVFoundation Capture...${NC}"
+cat << 'EOF' > /tmp/test_camera.swift
+import Foundation
+import AVFoundation
+
+let discoverySession = AVCaptureDevice.DiscoverySession(
+    deviceTypes: [.builtInWideAngleCamera],
+    mediaType: .video,
+    position: .unspecified
+)
+print("CAMERA_DISCOVERY_SUCCESS: Found \(discoverySession.devices.count) cameras")
+exit(0)
+EOF
+
+if swift /tmp/test_camera.swift 2>&1 | grep -q "CAMERA_DISCOVERY_SUCCESS"; then
+    pass "AVCaptureDevice discovery executed successfully"
+else
+    fail "Camera Discovery" "Failed to query video capture devices"
+fi
+rm -f /tmp/test_camera.swift
+
 # SUMMARY
 echo -e "\n${BLUE}====================================================${NC}"
 if [ $PASSED -eq $TOTAL ]; then

@@ -27,6 +27,25 @@ public struct MenuBarView: View {
 
             Divider()
 
+            // Permission alert if needed
+            if !appState.hasPermission {
+                HStack {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundColor(.orange)
+                    Text("Screen permission required")
+                        .font(.caption2)
+                    Spacer()
+                    Button("Grant") {
+                        appState.openScreenRecordingSettings()
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.mini)
+                }
+                .padding(8)
+                .background(Color.orange.opacity(0.12))
+                Divider()
+            }
+
             // Recording Action
             VStack(spacing: 10) {
                 switch appState.state {
@@ -96,6 +115,19 @@ public struct MenuBarView: View {
                             Toggle("Mic", isOn: $appState.settings.captureMicrophone)
                                 .toggleStyle(.checkbox)
                                 .font(.caption2)
+                            Spacer()
+                            Toggle("Cam", isOn: Binding(
+                                get: { appState.camera.isVisible },
+                                set: { enabled in
+                                    if enabled {
+                                        appState.camera.showOverlay()
+                                    } else {
+                                        appState.camera.hideOverlay()
+                                    }
+                                }
+                            ))
+                            .toggleStyle(.checkbox)
+                            .font(.caption2)
                         }
                     }
                 }
@@ -163,7 +195,7 @@ public struct MenuBarView: View {
             .padding(.vertical, 8)
             .background(Color(NSColor.windowBackgroundColor))
         }
-        .frame(width: 300)
+        .frame(width: 310)
     }
 
     private func formatDuration(_ duration: TimeInterval) -> String {

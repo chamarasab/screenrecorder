@@ -20,7 +20,7 @@ public struct MainWindowView: View {
                     Divider()
                 }
 
-                // Control Card
+                // Control Card (Recording, Audio, & Camera)
                 recordingControlCard
                     .padding(12)
                     .background(Color(NSColor.controlBackgroundColor).opacity(0.2))
@@ -85,7 +85,7 @@ public struct MainWindowView: View {
                 .padding(.vertical, 8)
                 .background(Color(NSColor.windowBackgroundColor))
             }
-            .navigationSplitViewColumnWidth(min: 280, ideal: 320, max: 380)
+            .navigationSplitViewColumnWidth(min: 300, ideal: 340, max: 400)
         } detail: {
             if let recording = appState.selectedRecording {
                 VideoPlayerView(
@@ -127,7 +127,7 @@ public struct MainWindowView: View {
     }
 
     private var permissionBanner: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 6) {
                 Image(systemName: "exclamationmark.triangle.fill")
                     .foregroundColor(.orange)
@@ -140,14 +140,22 @@ public struct MainWindowView: View {
                 .font(.system(size: 11))
                 .foregroundColor(.secondary)
 
-            Button("Grant Permission in Settings") {
-                appState.requestPermissions()
+            HStack(spacing: 8) {
+                Button("Grant Permission in Settings") {
+                    appState.openScreenRecordingSettings()
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+
+                Button("Refresh") {
+                    appState.checkAndRefreshPermissions()
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
             }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.small)
         }
-        .padding(8)
-        .background(Color.orange.opacity(0.1))
+        .padding(10)
+        .background(Color.orange.opacity(0.12))
         .cornerRadius(8)
     }
 
@@ -179,6 +187,9 @@ public struct MainWindowView: View {
                     }
                     .buttonStyle(.borderedProminent)
                     .tint(.red)
+
+                    // Facecam controls accessible during recording too!
+                    facecamControlCard
                 }
 
             case .finalizing:
@@ -251,6 +262,9 @@ public struct MainWindowView: View {
                     .background(Color(NSColor.textBackgroundColor).opacity(0.4))
                     .cornerRadius(6)
 
+                    // Camera Facecam Controls (Draggable & Resizable)
+                    facecamControlCard
+
                     // Quality & Display Pickers
                     HStack(spacing: 8) {
                         Picker("FPS", selection: $appState.settings.fps) {
@@ -273,6 +287,107 @@ public struct MainWindowView: View {
         }
     }
 
+    private var facecamControlCard: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            HStack {
+                Toggle(isOn: Binding(
+                    get: { appState.camera.isVisible },
+                    set: { enabled in
+                        if enabled {
+                            appState.camera.showOverlay()
+                        } else {
+                            appState.camera.hideOverlay()
+                        }
+                    }
+                )) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "camera.circle.fill")
+                            .foregroundColor(.purple)
+                            .frame(width: 16)
+                        Text("Webcam Facecam Circle")
+                            .font(.caption)
+                            .fontWeight(.medium)
+                    }
+                }
+                .toggleStyle(.checkbox)
+
+                Spacer()
+
+                if appState.camera.isVisible {
+                    HStack(spacing: 4) {
+                        Circle().fill(Color.green).frame(width: 6, height: 6)
+                        Text("LIVE")
+                            .font(.system(size: 8, weight: .bold))
+                            .foregroundColor(.green)
+                    }
+                }
+            }
+
+            // Size Selector (Small / Medium / Large)
+            HStack(spacing: 6) {
+                Text("Circle Size:")
+                    .font(.system(size: 10.5))
+                    .foregroundColor(.secondary)
+
+                ForEach(CameraCircleSize.allCases) { size in
+                    Button(action: {
+                        appState.camera.setSize(size)
+                    }) {
+                        Text(size.shortLabel)
+                            .font(.system(size: 10, weight: .bold))
+                            .frame(width: 26, height: 20)
+                            .background(appState.camera.circleSize == size ? Color.purple.opacity(0.3) : Color.clear)
+                            .foregroundColor(appState.camera.circleSize == size ? .purple : .primary)
+                            .cornerRadius(4)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 4)
+                                    .stroke(appState.camera.circleSize == size ? Color.purple : Color.secondary.opacity(0.3), lineWidth: 1)
+                            )
+                    }
+                    .buttonStyle(.plain)
+                    .help(size.title)
+                }
+
+                Spacer()
+
+                if appState.camera.isVisible {
+                    Button(action: {
+                        withAnimation {
+                            appState.camera.isMirrored.toggle()
+                        }
+                    }) {
+                        Image(systemName: "arrow.left.and.right.righttriangle.left.righttriangle.right.fill")
+                            .font(.system(size: 10))
+                            .foregroundColor(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Flip Camera Horizontally")
+                }
+            }
+
+            // Camera selector if multiple cameras exist
+            if appState.camera.availableCameras.count > 1 {
+                Picker("Camera", selection: Binding(
+                    get: { appState.camera.selectedCameraID },
+                    set: { appState.camera.selectCamera(id: $0) }
+                )) {
+                    ForEach(appState.camera.availableCameras, id: \.uniqueID) { dev in
+                        Text(dev.localizedName).tag(dev.uniqueID)
+                    }
+                }
+                .pickerStyle(.menu)
+                .font(.caption2)
+            }
+
+            Text("Draggable circle • Captured directly into screen recording")
+                .font(.system(size: 9.5))
+                .foregroundColor(.secondary.opacity(0.8))
+        }
+        .padding(8)
+        .background(Color(NSColor.textBackgroundColor).opacity(0.4))
+        .cornerRadius(6)
+    }
+
     private var emptyDetailState: some View {
         VStack(spacing: 16) {
             Image(systemName: "video.badge.waveform")
@@ -283,7 +398,7 @@ public struct MainWindowView: View {
                 .font(.title)
                 .fontWeight(.bold)
 
-            Text("Record crisp screen videos with internal macOS audio. QuickTime can't capture computer sound, but ScreenRecorder does natively.")
+            Text("Record crisp screen videos with internal macOS audio and floating webcam circle. QuickTime cannot capture computer sound, but ScreenRecorder does natively.")
                 .font(.body)
                 .multilineTextAlignment(.center)
                 .foregroundColor(.secondary)
@@ -296,26 +411,15 @@ public struct MainWindowView: View {
                 Label("Internal Audio", systemImage: "speaker.wave.2.fill")
                     .font(.caption)
                     .foregroundColor(.green)
+                Label("Facecam Overlay", systemImage: "camera.circle.fill")
+                    .font(.caption)
+                    .foregroundColor(.purple)
                 Label("Built-in Player", systemImage: "play.circle.fill")
                     .font(.caption)
-                    .foregroundColor(.blue)
             }
-            .padding(.top, 4)
-
-            Button(action: {
-                appState.startRecording()
-            }) {
-                Label("Start Recording Now", systemImage: "record.circle.fill")
-                    .font(.headline)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 6)
-            }
-            .buttonStyle(.borderedProminent)
-            .tint(.red)
-            .padding(.top, 8)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color(NSColor.textBackgroundColor).opacity(0.3))
+        .background(Color(NSColor.windowBackgroundColor))
     }
 
     private func formatDuration(_ duration: TimeInterval) -> String {
@@ -325,56 +429,61 @@ public struct MainWindowView: View {
     }
 }
 
+// MARK: - Subviews
 struct RecordingRow: View {
     let item: RecordingItem
     let isSelected: Bool
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack {
+        HStack(spacing: 10) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(Color.secondary.opacity(0.15))
+                    .frame(width: 44, height: 32)
+
+                Image(systemName: "play.fill")
+                    .font(.system(size: 11))
+                    .foregroundColor(.secondary)
+            }
+
+            VStack(alignment: .leading, spacing: 2) {
                 Text(item.title)
-                    .font(.subheadline)
-                    .fontWeight(.medium)
+                    .font(.system(size: 12, weight: .medium))
                     .lineLimit(1)
-                    .foregroundColor(isSelected ? .white : .primary)
-                Spacer()
-                Text(item.formattedDuration)
-                    .font(.caption2)
-                    .foregroundColor(isSelected ? .white.opacity(0.8) : .secondary)
-            }
 
-            HStack(spacing: 6) {
-                Text(item.formattedDate)
-                    .font(.caption2)
-                    .foregroundColor(isSelected ? .white.opacity(0.7) : .secondary)
+                HStack(spacing: 6) {
+                    Text(item.formattedDuration)
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
 
-                Spacer()
+                    Text("•")
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
 
-                if item.hasSystemAudio {
-                    Image(systemName: "speaker.wave.2.fill")
-                        .font(.system(size: 9))
-                        .foregroundColor(isSelected ? .white : .green)
+                    Text(item.formattedSize)
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
                 }
-
-                Text(item.formattedFileSize)
-                    .font(.caption2)
-                    .foregroundColor(isSelected ? .white.opacity(0.7) : .secondary)
             }
+
+            Spacer()
         }
-        .padding(.vertical, 4)
+        .padding(.vertical, 3)
     }
 }
 
 struct PulsingRecordingDot: View {
-    @State private var pulse = false
+    @State private var isPulsing = false
 
     var body: some View {
         Circle()
             .fill(Color.red)
             .frame(width: 10, height: 10)
-            .scaleEffect(pulse ? 1.3 : 0.8)
-            .opacity(pulse ? 1.0 : 0.5)
-            .animation(.easeInOut(duration: 0.8).repeatForever(autoreverses: true), value: pulse)
-            .onAppear { pulse = true }
+            .scaleEffect(isPulsing ? 1.25 : 0.9)
+            .opacity(isPulsing ? 1.0 : 0.6)
+            .animation(.easeInOut(duration: 0.8).repeatForever(autoreverses: true), value: isPulsing)
+            .onAppear {
+                isPulsing = true
+            }
     }
 }

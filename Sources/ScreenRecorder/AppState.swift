@@ -2,6 +2,7 @@ import Foundation
 import SwiftUI
 import ScreenCaptureKit
 import Combine
+import AppKit
 
 @MainActor
 public final class AppState: ObservableObject {
@@ -14,9 +15,12 @@ public final class AppState: ObservableObject {
     @Published public var recordingDuration: TimeInterval = 0
     @Published public var hasPermission: Bool = false
 
+    public let camera = CameraOverlayController.shared
+
     private let engine = ScreenRecorderEngine.shared
     private let storage = StorageManager.shared
     private var cancellables = Set<AnyCancellable>()
+    private var permissionPollTimer: Timer?
 
     public init() {
         self.recordings = storage.loadRecordings()
@@ -33,6 +37,35 @@ public final class AppState: ObservableObject {
             }
             .store(in: &cancellables)
 
+        // Observe when app becomes active to immediately refresh permissions
+        NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                self?.checkAndRefreshPermissions()
+            }
+            .store(in: &cancellables)
+
+        fetchDisplays()
+        startPermissionPolling()
+    }
+
+    private func startPermissionPolling() {
+        permissionPollTimer?.invalidate()
+        permissionPollTimer = Timer.scheduledTimer(withTimeInterval: 1.5, repeats: true) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                guard let self = self else { return }
+                if !self.hasPermission {
+                    self.checkAndRefreshPermissions()
+                }
+            }
+        }
+    }
+
+    public func checkAndRefreshPermissions() {
+        let granted = engine.checkPermissions()
+        if granted != self.hasPermission {
+            self.hasPermission = granted
+        }
         fetchDisplays()
     }
 
@@ -51,15 +84,30 @@ public final class AppState: ObservableObject {
                 }
             } catch {
                 await MainActor.run {
-                    self.hasPermission = false
+                    let preflight = self.engine.checkPermissions()
+                    self.hasPermission = preflight
                 }
             }
         }
     }
 
-    public func requestPermissions() {
+    public func openScreenRecordingSettings() {
+        // Trigger OS permission prompt dialog if not determined yet
         engine.requestPermissions()
-        fetchDisplays()
+
+        // Directly open System Settings -> Screen & System Audio Recording
+        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture") {
+            NSWorkspace.shared.open(url)
+        }
+
+        // Check again after a brief moment
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
+            self?.checkAndRefreshPermissions()
+        }
+    }
+
+    public func requestPermissions() {
+        openScreenRecordingSettings()
     }
 
     public func toggleRecording() {
