@@ -60,7 +60,7 @@ EOF
 
 # Sign bundle ad-hoc so macOS Gatekeeper trusts it completely
 echo "✍️ Signing application bundle..."
-codesign --force --deep --sign - "$APP_DIR"
+codesign --force --deep -s - -r="designated => identifier \"com.chamara.ScreenRecorder\"" "$APP_DIR"
 xattr -cr "$APP_DIR" || true
 
 echo "✅ Successfully packaged and signed ScreenRecorder.app with custom icon!"

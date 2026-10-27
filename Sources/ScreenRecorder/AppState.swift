@@ -25,7 +25,8 @@ public final class AppState: ObservableObject {
     public init() {
         self.recordings = storage.loadRecordings()
         self.selectedRecording = recordings.first
-        self.hasPermission = engine.checkPermissions()
+        let granted = engine.checkPermissions()
+        self.hasPermission = granted
 
         engine.$elapsedTime
             .receive(on: DispatchQueue.main)
@@ -37,7 +38,7 @@ public final class AppState: ObservableObject {
             }
             .store(in: &cancellables)
 
-        // Observe when app becomes active to immediately refresh permissions
+        // Silently observe when app becomes active to check permissions
         NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in
@@ -45,31 +46,52 @@ public final class AppState: ObservableObject {
             }
             .store(in: &cancellables)
 
-        fetchDisplays()
-        startPermissionPolling()
+        if granted {
+            fetchDisplays()
+        } else {
+            startPermissionPolling()
+        }
     }
 
     private func startPermissionPolling() {
         permissionPollTimer?.invalidate()
-        permissionPollTimer = Timer.scheduledTimer(withTimeInterval: 1.5, repeats: true) { [weak self] _ in
+        // SILENT POLLING: uses ONLY CGPreflightScreenCaptureAccess().
+        // Never calls SCShareableContent.current or CGRequestScreenCaptureAccess() while ungranted.
+        permissionPollTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] timer in
             Task { @MainActor [weak self] in
                 guard let self = self else { return }
-                if !self.hasPermission {
-                    self.checkAndRefreshPermissions()
+                let granted = self.engine.checkPermissions()
+                if granted {
+                    self.hasPermission = true
+                    timer.invalidate()
+                    self.permissionPollTimer = nil
+                    self.fetchDisplays()
                 }
             }
         }
     }
 
     public func checkAndRefreshPermissions() {
+        // Non-intrusive preflight check
         let granted = engine.checkPermissions()
-        if granted != self.hasPermission {
-            self.hasPermission = granted
+        if granted {
+            self.hasPermission = true
+            permissionPollTimer?.invalidate()
+            permissionPollTimer = nil
+            fetchDisplays()
+        } else {
+            self.hasPermission = false
         }
-        fetchDisplays()
     }
 
     public func fetchDisplays() {
+        // STRICT GUARD: Never invoke SCShareableContent.current unless permission is preflight-confirmed.
+        // Otherwise macOS triggers repeated authorization modals.
+        guard engine.checkPermissions() else {
+            self.hasPermission = false
+            return
+        }
+
         Task {
             do {
                 let content = try await SCShareableContent.current
@@ -84,26 +106,25 @@ public final class AppState: ObservableObject {
                 }
             } catch {
                 await MainActor.run {
-                    let preflight = self.engine.checkPermissions()
-                    self.hasPermission = preflight
+                    self.hasPermission = self.engine.checkPermissions()
                 }
             }
         }
     }
 
     public func openScreenRecordingSettings() {
-        // Trigger OS permission prompt dialog if not determined yet
-        engine.requestPermissions()
+        // Trigger OS permission registration once if not yet granted
+        if !engine.checkPermissions() {
+            engine.requestPermissions()
+        }
 
-        // Directly open System Settings -> Screen & System Audio Recording
+        // Open System Settings directly to Screen & System Audio Recording
         if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture") {
             NSWorkspace.shared.open(url)
         }
 
-        // Check again after a brief moment
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
-            self?.checkAndRefreshPermissions()
-        }
+        // Silently poll so as soon as user toggles it on, the banner disappears immediately
+        startPermissionPolling()
     }
 
     public func requestPermissions() {
