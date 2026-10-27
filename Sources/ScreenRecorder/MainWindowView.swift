@@ -1,0 +1,380 @@
+import SwiftUI
+
+public struct MainWindowView: View {
+    @ObservedObject var appState: AppState
+
+    public var body: some View {
+        NavigationSplitView {
+            VStack(spacing: 0) {
+                // Header & Brand
+                sidebarHeader
+                    .padding(14)
+                    .background(Color(NSColor.controlBackgroundColor).opacity(0.4))
+
+                Divider()
+
+                // Permission Warning (if needed)
+                if !appState.hasPermission {
+                    permissionBanner
+                        .padding(10)
+                    Divider()
+                }
+
+                // Control Card
+                recordingControlCard
+                    .padding(12)
+                    .background(Color(NSColor.controlBackgroundColor).opacity(0.2))
+
+                Divider()
+
+                // Recordings List / Gallery
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack {
+                        Text("RECORDINGS")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundColor(.secondary)
+                        Spacer()
+                        Text("\(appState.recordings.count)")
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                    }
+                    .padding(.horizontal, 14)
+                    .padding(.top, 8)
+
+                    if appState.recordings.isEmpty {
+                        VStack(spacing: 8) {
+                            Spacer()
+                            Image(systemName: "video.slash")
+                                .font(.system(size: 24))
+                                .foregroundColor(.secondary.opacity(0.4))
+                            Text("No recordings yet")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                            Spacer()
+                        }
+                        .frame(maxWidth: .infinity)
+                    } else {
+                        List(selection: $appState.selectedRecording) {
+                            ForEach(appState.recordings) { item in
+                                RecordingRow(item: item, isSelected: appState.selectedRecording?.id == item.id)
+                                    .tag(item)
+                            }
+                        }
+                        .listStyle(.sidebar)
+                    }
+                }
+
+                Divider()
+
+                // Footer
+                HStack {
+                    Text("Auto-saves with System Audio")
+                        .font(.system(size: 10))
+                        .foregroundColor(.secondary)
+                    Spacer()
+                    Button(action: {
+                        appState.refreshRecordings()
+                    }) {
+                        Image(systemName: "arrow.clockwise")
+                            .font(.caption2)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Refresh recordings list")
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 8)
+                .background(Color(NSColor.windowBackgroundColor))
+            }
+            .navigationSplitViewColumnWidth(min: 280, ideal: 320, max: 380)
+        } detail: {
+            if let recording = appState.selectedRecording {
+                VideoPlayerView(
+                    recording: recording,
+                    onDelete: {
+                        appState.deleteRecording(recording)
+                    }
+                )
+            } else {
+                emptyDetailState
+            }
+        }
+    }
+
+    private var sidebarHeader: some View {
+        HStack {
+            HStack(spacing: 8) {
+                Image(systemName: "record.circle.fill")
+                    .font(.system(size: 18, weight: .bold))
+                    .foregroundColor(.red)
+
+                Text("ScreenRecorder")
+                    .font(.system(size: 15, weight: .bold))
+            }
+
+            Spacer()
+
+            HStack(spacing: 4) {
+                Circle().fill(Color.green).frame(width: 6, height: 6)
+                Text("M5 Metal")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundColor(.secondary)
+            }
+            .padding(.horizontal, 6)
+            .padding(.vertical, 3)
+            .background(Color.secondary.opacity(0.1))
+            .cornerRadius(10)
+        }
+    }
+
+    private var permissionBanner: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 6) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundColor(.orange)
+                Text("Screen Permission Required")
+                    .font(.caption)
+                    .fontWeight(.semibold)
+            }
+
+            Text("macOS requires permission to capture your screen and system audio.")
+                .font(.system(size: 11))
+                .foregroundColor(.secondary)
+
+            Button("Grant Permission in Settings") {
+                appState.requestPermissions()
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.small)
+        }
+        .padding(8)
+        .background(Color.orange.opacity(0.1))
+        .cornerRadius(8)
+    }
+
+    private var recordingControlCard: some View {
+        VStack(spacing: 10) {
+            switch appState.state {
+            case .recording(let elapsed):
+                VStack(spacing: 10) {
+                    HStack {
+                        PulsingRecordingDot()
+                        Text("RECORDING")
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundColor(.red)
+                        Spacer()
+                        Text(formatDuration(elapsed))
+                            .font(.system(size: 18, weight: .bold, design: .monospaced))
+                    }
+
+                    Button(action: {
+                        appState.stopRecording()
+                    }) {
+                        HStack {
+                            Image(systemName: "stop.fill")
+                            Text("Stop & Save Recording")
+                                .fontWeight(.semibold)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 6)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(.red)
+                }
+
+            case .finalizing:
+                VStack(spacing: 6) {
+                    ProgressView()
+                        .scaleEffect(0.8)
+                    Text("Saving high-resolution MP4 video...")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+                .padding(.vertical, 8)
+
+            case .error(let msg):
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(msg)
+                        .font(.caption)
+                        .foregroundColor(.red)
+                    Button("Dismiss") {
+                        appState.state = .idle
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.mini)
+                }
+
+            case .idle:
+                VStack(spacing: 10) {
+                    // Start Recording Trigger
+                    Button(action: {
+                        appState.startRecording()
+                    }) {
+                        HStack(spacing: 8) {
+                            Image(systemName: "record.circle")
+                                .font(.system(size: 16, weight: .bold))
+                                .foregroundColor(.red)
+                            Text("Start Recording Screen")
+                                .fontWeight(.semibold)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 7)
+                    }
+                    .buttonStyle(.borderedProminent)
+
+                    // Audio Toggles
+                    VStack(spacing: 6) {
+                        Toggle(isOn: $appState.settings.captureSystemAudio) {
+                            HStack(spacing: 6) {
+                                Image(systemName: "speaker.wave.2.fill")
+                                    .foregroundColor(.green)
+                                    .frame(width: 16)
+                                Text("System Audio (Mac Sound)")
+                                    .font(.caption)
+                            }
+                        }
+                        .toggleStyle(.checkbox)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+
+                        Toggle(isOn: $appState.settings.captureMicrophone) {
+                            HStack(spacing: 6) {
+                                Image(systemName: "mic.fill")
+                                    .foregroundColor(.blue)
+                                    .frame(width: 16)
+                                Text("Microphone Voiceover")
+                                    .font(.caption)
+                            }
+                        }
+                        .toggleStyle(.checkbox)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .padding(8)
+                    .background(Color(NSColor.textBackgroundColor).opacity(0.4))
+                    .cornerRadius(6)
+
+                    // Quality & Display Pickers
+                    HStack(spacing: 8) {
+                        Picker("FPS", selection: $appState.settings.fps) {
+                            Text("30 FPS").tag(30)
+                            Text("60 FPS").tag(60)
+                        }
+                        .pickerStyle(.menu)
+                        .font(.caption)
+
+                        Picker("Quality", selection: $appState.settings.resolutionPreset) {
+                            ForEach(ResolutionPreset.allCases) { preset in
+                                Text(preset.rawValue).tag(preset)
+                            }
+                        }
+                        .pickerStyle(.menu)
+                        .font(.caption)
+                    }
+                }
+            }
+        }
+    }
+
+    private var emptyDetailState: some View {
+        VStack(spacing: 16) {
+            Image(systemName: "video.badge.waveform")
+                .font(.system(size: 64))
+                .foregroundColor(.accentColor.opacity(0.7))
+
+            Text("ScreenRecorder Studio")
+                .font(.title)
+                .fontWeight(.bold)
+
+            Text("Record crisp screen videos with internal macOS audio. QuickTime can't capture computer sound, but ScreenRecorder does natively.")
+                .font(.body)
+                .multilineTextAlignment(.center)
+                .foregroundColor(.secondary)
+                .frame(maxWidth: 440)
+
+            HStack(spacing: 16) {
+                Label("60 FPS H.264", systemImage: "bolt.fill")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                Label("Internal Audio", systemImage: "speaker.wave.2.fill")
+                    .font(.caption)
+                    .foregroundColor(.green)
+                Label("Built-in Player", systemImage: "play.circle.fill")
+                    .font(.caption)
+                    .foregroundColor(.blue)
+            }
+            .padding(.top, 4)
+
+            Button(action: {
+                appState.startRecording()
+            }) {
+                Label("Start Recording Now", systemImage: "record.circle.fill")
+                    .font(.headline)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(.red)
+            .padding(.top, 8)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color(NSColor.textBackgroundColor).opacity(0.3))
+    }
+
+    private func formatDuration(_ duration: TimeInterval) -> String {
+        let mins = Int(duration) / 60
+        let secs = Int(duration) % 60
+        return String(format: "%02d:%02d", mins, secs)
+    }
+}
+
+struct RecordingRow: View {
+    let item: RecordingItem
+    let isSelected: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Text(item.title)
+                    .font(.subheadline)
+                    .fontWeight(.medium)
+                    .lineLimit(1)
+                    .foregroundColor(isSelected ? .white : .primary)
+                Spacer()
+                Text(item.formattedDuration)
+                    .font(.caption2)
+                    .foregroundColor(isSelected ? .white.opacity(0.8) : .secondary)
+            }
+
+            HStack(spacing: 6) {
+                Text(item.formattedDate)
+                    .font(.caption2)
+                    .foregroundColor(isSelected ? .white.opacity(0.7) : .secondary)
+
+                Spacer()
+
+                if item.hasSystemAudio {
+                    Image(systemName: "speaker.wave.2.fill")
+                        .font(.system(size: 9))
+                        .foregroundColor(isSelected ? .white : .green)
+                }
+
+                Text(item.formattedFileSize)
+                    .font(.caption2)
+                    .foregroundColor(isSelected ? .white.opacity(0.7) : .secondary)
+            }
+        }
+        .padding(.vertical, 4)
+    }
+}
+
+struct PulsingRecordingDot: View {
+    @State private var pulse = false
+
+    var body: some View {
+        Circle()
+            .fill(Color.red)
+            .frame(width: 10, height: 10)
+            .scaleEffect(pulse ? 1.3 : 0.8)
+            .opacity(pulse ? 1.0 : 0.5)
+            .animation(.easeInOut(duration: 0.8).repeatForever(autoreverses: true), value: pulse)
+            .onAppear { pulse = true }
+    }
+}
