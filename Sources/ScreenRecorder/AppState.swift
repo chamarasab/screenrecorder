@@ -127,6 +127,15 @@ public final class AppState: ObservableObject {
         startPermissionPolling()
     }
 
+    public func relaunchApp() {
+        let bundleURL = Bundle.main.bundleURL
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: "/usr/bin/open")
+        task.arguments = ["-n", bundleURL.path]
+        try? task.run()
+        NSApplication.shared.terminate(nil)
+    }
+
     public func requestPermissions() {
         openScreenRecordingSettings()
     }
@@ -150,10 +159,12 @@ public final class AppState: ObservableObject {
                 )
                 await MainActor.run {
                     self.state = .recording(elapsed: 0)
+                    self.hasPermission = true
                 }
             } catch {
                 await MainActor.run {
                     self.state = .error("Failed to start screen capture: \(error.localizedDescription)")
+                    self.checkAndRefreshPermissions()
                 }
             }
         }

@@ -136,22 +136,30 @@ public struct MainWindowView: View {
                     .fontWeight(.semibold)
             }
 
-            Text("macOS requires permission to capture your screen and system audio.")
+            Text("Turn the toggle switch next to ScreenRecorder to ON (Blue) in System Settings. If prompted by macOS, select 'Quit & Reopen'.")
                 .font(.system(size: 11))
                 .foregroundColor(.secondary)
 
             HStack(spacing: 8) {
-                Button("Grant Permission in Settings") {
+                Button("1. Open Settings") {
                     appState.openScreenRecordingSettings()
                 }
                 .buttonStyle(.borderedProminent)
                 .controlSize(.small)
 
-                Button("Refresh") {
-                    appState.checkAndRefreshPermissions()
+                Button("2. Relaunch App") {
+                    appState.relaunchApp()
                 }
                 .buttonStyle(.bordered)
                 .controlSize(.small)
+                .help("Relaunch app to apply permissions after toggling in Settings")
+
+                Button("Check Status") {
+                    appState.checkAndRefreshPermissions()
+                }
+                .buttonStyle(.plain)
+                .font(.system(size: 10))
+                .foregroundColor(.accentColor)
             }
         }
         .padding(10)
