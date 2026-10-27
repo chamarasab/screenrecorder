@@ -25,8 +25,7 @@ public final class AppState: ObservableObject {
     public init() {
         self.recordings = storage.loadRecordings()
         self.selectedRecording = recordings.first
-        let granted = engine.checkPermissions()
-        self.hasPermission = granted
+        self.hasPermission = engine.checkPermissions()
 
         engine.$elapsedTime
             .receive(on: DispatchQueue.main)
@@ -38,7 +37,7 @@ public final class AppState: ObservableObject {
             }
             .store(in: &cancellables)
 
-        // Silently observe when app becomes active to check permissions
+        // Observe when app becomes active to check permissions
         NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in
@@ -46,57 +45,46 @@ public final class AppState: ObservableObject {
             }
             .store(in: &cancellables)
 
-        if granted {
-            fetchDisplays()
-        } else {
-            startPermissionPolling()
-        }
+        // Initial check with ScreenCaptureKit
+        fetchDisplays(force: true)
     }
 
     private func startPermissionPolling() {
         permissionPollTimer?.invalidate()
-        // SILENT POLLING: uses ONLY CGPreflightScreenCaptureAccess().
-        // Never calls SCShareableContent.current or CGRequestScreenCaptureAccess() while ungranted.
-        permissionPollTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] timer in
+        // SILENT POLLING: uses non-intrusive preflight check
+        permissionPollTimer = Timer.scheduledTimer(withTimeInterval: 1.5, repeats: true) { [weak self] timer in
             Task { @MainActor [weak self] in
                 guard let self = self else { return }
-                let granted = self.engine.checkPermissions()
-                if granted {
+                if self.engine.checkPermissions() {
                     self.hasPermission = true
                     timer.invalidate()
                     self.permissionPollTimer = nil
-                    self.fetchDisplays()
+                    self.fetchDisplays(force: true)
                 }
             }
         }
     }
 
     public func checkAndRefreshPermissions() {
-        // Non-intrusive preflight check
-        let granted = engine.checkPermissions()
-        if granted {
+        if engine.checkPermissions() {
             self.hasPermission = true
             permissionPollTimer?.invalidate()
             permissionPollTimer = nil
-            fetchDisplays()
+            fetchDisplays(force: true)
         } else {
-            self.hasPermission = false
+            // Also directly verify via ScreenCaptureKit in case CGPreflight has an ad-hoc disparity on macOS Sequoia
+            fetchDisplays(force: true)
         }
     }
 
-    public func fetchDisplays() {
-        // STRICT GUARD: Never invoke SCShareableContent.current unless permission is preflight-confirmed.
-        // Otherwise macOS triggers repeated authorization modals.
-        guard engine.checkPermissions() else {
-            self.hasPermission = false
-            return
-        }
-
+    public func fetchDisplays(force: Bool = false) {
         Task {
             do {
                 let content = try await SCShareableContent.current
                 await MainActor.run {
                     self.hasPermission = true
+                    self.permissionPollTimer?.invalidate()
+                    self.permissionPollTimer = nil
                     self.availableDisplays = content.displays.enumerated().map { index, display in
                         "Display \(index + 1) (\(display.width)x\(display.height))"
                     }
@@ -106,7 +94,7 @@ public final class AppState: ObservableObject {
                 }
             } catch {
                 await MainActor.run {
-                    self.hasPermission = self.engine.checkPermissions()
+                    self.hasPermission = false
                 }
             }
         }
@@ -123,7 +111,6 @@ public final class AppState: ObservableObject {
             NSWorkspace.shared.open(url)
         }
 
-        // Silently poll so as soon as user toggles it on, the banner disappears immediately
         startPermissionPolling()
     }
 
