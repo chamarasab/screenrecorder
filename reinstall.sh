@@ -49,6 +49,10 @@ cat <<EOF > "$CONTENTS_DIR/Info.plist"
     <string>1.0.0</string>
     <key>CFBundleVersion</key>
     <string>1</string>
+    <key>LSApplicationCategoryType</key>
+    <string>public.app-category.video</string>
+    <key>NSHumanReadableCopyright</key>
+    <string>Copyright © 2026 Chamara. All rights reserved.</string>
     <key>CFBundleIconFile</key>
     <string>AppIcon</string>
     <key>CFBundleIconName</key>

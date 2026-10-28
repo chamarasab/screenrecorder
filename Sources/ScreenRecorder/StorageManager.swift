@@ -31,17 +31,34 @@ public final class StorageManager {
             let size = Int64(values?.fileSize ?? 0)
 
             let asset = AVURLAsset(url: file)
-            let durationSeconds = CMTimeGetSeconds(asset.duration)
 
+            // Modern asynchronous property loading with synchronous dispatch barrier for initial load
+            var durationSeconds: Double = 0
             var w = 1920
             var h = 1080
-            if let track = asset.tracks(withMediaType: .video).first {
-                let s = track.naturalSize.applying(track.preferredTransform)
-                w = Int(abs(s.width))
-                h = Int(abs(s.height))
-            }
+            var hasAudio = false
 
-            let hasAudio = !asset.tracks(withMediaType: .audio).isEmpty
+            let sema = DispatchSemaphore(value: 0)
+            Task {
+                if let dur = try? await asset.load(.duration) {
+                    durationSeconds = CMTimeGetSeconds(dur)
+                }
+
+                if let videoTracks = try? await asset.loadTracks(withMediaType: .video), let track = videoTracks.first {
+                    if let naturalSize = try? await track.load(.naturalSize),
+                       let transform = try? await track.load(.preferredTransform) {
+                        let s = naturalSize.applying(transform)
+                        w = Int(abs(s.width))
+                        h = Int(abs(s.height))
+                    }
+                }
+
+                if let audioTracks = try? await asset.loadTracks(withMediaType: .audio) {
+                    hasAudio = !audioTracks.isEmpty
+                }
+                sema.signal()
+            }
+            _ = sema.wait(timeout: .now() + 1.0)
 
             let item = RecordingItem(
                 url: file,
