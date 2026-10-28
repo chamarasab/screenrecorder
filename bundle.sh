@@ -63,5 +63,12 @@ echo "✍️ Signing application bundle..."
 codesign --force --deep -s - -r="designated => identifier \"com.chamara.ScreenRecorder\"" "$APP_DIR"
 xattr -cr "$APP_DIR" || true
 
-echo "✅ Successfully packaged and signed ScreenRecorder.app with custom icon!"
-echo "📍 Location: $(pwd)/$APP_DIR"
+echo "🚀 Installing to /Applications/ScreenRecorder.app..."
+cp -R "$APP_DIR" /Applications/ScreenRecorder.app
+xattr -cr /Applications/ScreenRecorder.app
+/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -u "$(pwd)/$APP_DIR" 2>/dev/null || true
+rm -rf "$APP_DIR"
+/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f /Applications/ScreenRecorder.app
+
+echo "✅ Successfully packaged, signed, and installed ScreenRecorder Studio!"
+echo "📍 Location: /Applications/ScreenRecorder.app"

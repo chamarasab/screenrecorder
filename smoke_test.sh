@@ -27,25 +27,30 @@ echo -e "${BLUE}====================================================${NC}\n"
 
 # TEST 1: App Bundle Verification
 echo -e "${YELLOW}1. App Bundle & Mach-O Integrity...${NC}"
-if [ -f "ScreenRecorder.app/Contents/MacOS/ScreenRecorder" ]; then
-    pass "Mach-O executable binary exists"
-else
-    fail "Mach-O executable binary" "Missing binary"
+APP_BUNDLE="/Applications/ScreenRecorder.app"
+if [ ! -d "$APP_BUNDLE" ]; then
+    APP_BUNDLE="ScreenRecorder.app"
 fi
 
-if file "ScreenRecorder.app/Contents/MacOS/ScreenRecorder" | grep -q "arm64"; then
+if [ -f "$APP_BUNDLE/Contents/MacOS/ScreenRecorder" ]; then
+    pass "Mach-O executable binary exists ($APP_BUNDLE)"
+else
+    fail "Mach-O executable binary" "Missing binary in $APP_BUNDLE"
+fi
+
+if file "$APP_BUNDLE/Contents/MacOS/ScreenRecorder" | grep -q "arm64"; then
     pass "Binary is Apple Silicon arm64 native"
 else
     fail "Binary architecture" "Not arm64"
 fi
 
-if [ -f "ScreenRecorder.app/Contents/Resources/AppIcon.icns" ]; then
+if [ -f "$APP_BUNDLE/Contents/Resources/AppIcon.icns" ]; then
     pass "AppIcon.icns exists in Resources"
 else
     fail "AppIcon.icns missing" "AppIcon.icns not found"
 fi
 
-if codesign --verify --deep --strict ScreenRecorder.app 2>/dev/null; then
+if codesign --verify --deep --strict "$APP_BUNDLE" 2>/dev/null; then
     pass "Codesign signature is valid and verified"
 else
     fail "Codesign verification" "Failed codesign verification"
@@ -164,10 +169,10 @@ rm -f /tmp/test_writer.swift /tmp/test_playback.swift /tmp/test_screenrecorder_s
 echo -e "\n${YELLOW}5. Live Application Launch & Window Display...${NC}"
 killall ScreenRecorder >/dev/null 2>&1 || true
 sleep 1
-open ScreenRecorder.app
+open "$APP_BUNDLE"
 sleep 2
 
-if pgrep -fl "ScreenRecorder.app" >/dev/null; then
+if pgrep -fl "ScreenRecorder" >/dev/null; then
     PID=$(pgrep -fl "ScreenRecorder.app" | awk '{print $1}')
     pass "ScreenRecorder Studio launched successfully with live window and dock presence (PID: $PID)"
 else

@@ -74,6 +74,8 @@ xattr -cr "$APP_DIR" || true
 echo "🚀 5. Installing clean app directly into /Applications/ScreenRecorder.app..."
 cp -R "$APP_DIR" /Applications/ScreenRecorder.app
 xattr -cr /Applications/ScreenRecorder.app
+/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -u "$(pwd)/$APP_DIR" 2>/dev/null || true
+rm -rf "$APP_DIR"
 
 echo "📋 6. Registering with macOS LaunchServices..."
 /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f /Applications/ScreenRecorder.app
